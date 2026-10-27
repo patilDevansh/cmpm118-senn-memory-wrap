@@ -1,0 +1,70 @@
+# Task 4: run the Memory Wrap (SENN) reference code headless on Nautilus.
+#
+# Before applying, ask in #nautilus-channel on the lab Discord (the lab requires permission
+# before running deployments/jobs). This job is small: CPU only, 4 cores, 8Gi RAM, ~15 min.
+#
+#   kubectl create configmap senn-scripts -n aiea-auditors \
+#       --from-file=scripts/parquet_to_mat.py --from-file=scripts/run_with_local_svhn.py --from-file=scripts/max_images.patch
+#   kubectl apply -n aiea-auditors -f senn-pvc.yaml
+#   kubectl apply -n aiea-auditors -f senn-job.yaml
+#   kubectl logs -n aiea-auditors -f job/dvpatil-senn-task4
+#   # while the pod is in its final 15-minute wait, copy the results out:
+#   kubectl cp aiea-auditors/<pod-name>:/results ./nautilus-results
+#   # clean up when done:
+#   kubectl delete -n aiea-auditors job/dvpatil-senn-task4 configmap/senn-scripts pvc/dvpatil-senn
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: dvpatil-senn-task4
+spec:
+  backoffLimit: 0
+  ttlSecondsAfterFinished: 3600
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+      - name: senn
+        image: pytorch/pytorch:2.4.1-cuda12.1-cudnn9-runtime
+        command: ["bash", "-c"]
+        args:
+        - |
+          set -euo pipefail
+          apt-get update -qq && apt-get install -y -qq git curl > /dev/null
+          pip install -q memorywrap captum absl-py entmax einops pyyaml scipy pyarrow matplotlib
+          git clone --depth 1 https://github.com/KRLGroup/memory-wrap.git /work
+          cd /work && git apply /scripts/max_images.patch
+          mkdir -p /data/raw paper/datasets
+          for s in train test; do
+            [ -f /data/raw/$s.parquet ] || curl -sL -o /data/raw/$s.parquet \
+              "https://huggingface.co/datasets/ufldl-stanford/svhn/resolve/main/cropped_digits/$s-00000-of-00001.parquet"
+          done
+          python /scripts/parquet_to_mat.py /data/raw paper/datasets
+          cd paper
+          echo "=== Test accuracy of the pre-trained model ==="
+          python /scripts/run_with_local_svhn.py eval.py --path models/2000.pt 2>&1 | tr '\r' '\n' | grep -v '^$' | tail -3
+          echo "=== Generating memory images ==="
+          cd scripts
+          python /scripts/run_with_local_svhn.py generate_memory_images.py --path_model ../models/2000.pt --max_images 20 2>&1 | tr '\r' '\n' | tail -1
+          mkdir -p /results && cp -r ../images/mem_images /results/
+          ls -R /results | head -40
+          echo "=== Done. Pod stays up 15 minutes for kubectl cp, then exits. ==="
+          sleep 900
+        volumeMounts:
+        - name: scripts
+          mountPath: /scripts
+        - name: data
+          mountPath: /data
+        resources:
+          requests:
+            cpu: "4"
+            memory: 8Gi
+          limits:
+            cpu: "4"
+            memory: 8Gi
+      volumes:
+      - name: scripts
+        configMap:
+          name: senn-scripts
+      - name: data
+        persistentVolumeClaim:
+          claimName: dvpatil-senn

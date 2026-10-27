@@ -1,0 +1,21 @@
+diff --git a/paper/scripts/generate_memory_images.py b/paper/scripts/generate_memory_images.py
+index a163560..1fb7c9b 100755
+--- a/paper/scripts/generate_memory_images.py
++++ b/paper/scripts/generate_memory_images.py
+@@ -14,6 +14,7 @@ import utils.utils as utils
+ absl.flags.DEFINE_string("path_model", None, "Path of the trained model")
+ absl.flags.DEFINE_integer("batch_size_test", 3, "Number of samples for each image")
+ absl.flags.DEFINE_string("dir_dataset", '../datasets/', "dir path where datasets are stored")
++absl.flags.DEFINE_integer("max_images", None, "Stop after generating this many figures (default: whole test set)")
+ absl.flags.mark_flag_as_required("path_model")
+ 
+ FLAGS = absl.flags.FLAGS
+@@ -71,6 +72,8 @@ def run(path:str,dataset_dir:str):
+ 
+ 
+     for batch_idx, (images, _) in enumerate(test_loader):
++        if FLAGS.max_images is not None and batch_idx >= FLAGS.max_images:
++            break
+         print("Batch:{}/{}".format(batch_idx, len(test_loader)), end='\r')
+         try:
+             memory, _ = next(memory_iter)

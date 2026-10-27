@@ -1,0 +1,12 @@
+# Small persistent volume that caches the SVHN download between job runs.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: dvpatil-senn
+spec:
+  storageClassName: rook-ceph-block
+  accessModes:
+  - ReadWriteOnce
+  resources:
+    requests:
+      storage: 2Gi
